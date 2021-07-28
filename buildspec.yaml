@@ -14,7 +14,7 @@ phases:
       - apt-get install git -y
       # - apt-get install -y maven
     finally:
-      - you have finished install stage, if you are lucky 
+      - echo you have finished install stage, if you are lucky 
   pre_build:
     commands:
       - echo Pre_build is pre-building...

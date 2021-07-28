@@ -1,0 +1,65 @@
+version: 0.2
+
+# env:
+#   variables:
+#     JAVA_HOME: "/usr/lib/jvm/java-8-openjdk-amd64"
+#   parameter-store:
+#     LOGIN_PASSWORD: /CodeBuild/dockerLoginPassword
+
+phases:
+  install:
+    commands:
+      - echo Instaliu vsiaku dich...
+      - apt-get update -y
+      - apt-get install git
+      # - apt-get install -y maven
+    finally:
+      - you have finished install stage, if you are lucky 
+  pre_build:
+    commands:
+      - echo Pre_build is pre-building...
+      - git clone https://github.com/dashkun1215/smth
+      # - docker login -u User -p $LOGIN_PASSWORD
+    # finally:
+    #   - echo This always runs even if the login command fails 
+  build:
+    commands:
+      - echo Wow, it's still working!
+      - echo Build started on `date`
+      - cd ./smth
+      - cat index.html
+      # - mvn install
+    # finally:
+    #   - echo This always runs even if the install command fails
+  post_build:
+    commands:
+      - echo Post_build phase. Are you still here?..
+      - echo Build completed on `date`
+
+# reports:
+#   arn:aws:codebuild:your-region:your-aws-account-id:report-group/report-group-name-1:
+#     files:
+#       - "**/*"
+#     base-directory: 'target/tests/reports'
+#     discard-paths: no
+#   reportGroupCucumberJson:
+#     files:
+#       - 'cucumber/target/cucumber-tests.xml'
+#     discard-paths: yes
+#     file-format: CUCUMBERJSON # default is JUNITXML
+# artifacts:
+#   files:
+#     - target/messageUtil-1.0.jar
+#   discard-paths: yes
+#   secondary-artifacts:
+#     artifact1:
+#       files:
+#         - target/artifact-1.0.jar
+#       discard-paths: yes
+#     artifact2:
+#       files:
+#         - target/artifact-2.0.jar
+#       discard-paths: yes
+# cache:
+#   paths:
+#     - '/root/.m2/**/*'

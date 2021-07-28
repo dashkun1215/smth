@@ -49,7 +49,7 @@ phases:
 #     file-format: CUCUMBERJSON # default is JUNITXML
 artifacts:
   files:
-    - index.html
+    - /smth/index.html
 # artifacts:
 #   files:
 #     - target/messageUtil-1.0.jar

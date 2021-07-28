@@ -24,7 +24,7 @@ phases:
     #   - echo This always runs even if the login command fails 
   build:
     commands:
-      - echo Wow, it's still working!
+      - echo Wow, it*s still working!
       - echo Build started on `date`
       - cd ./smth
       - cat index.html

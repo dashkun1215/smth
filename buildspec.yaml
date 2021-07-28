@@ -11,7 +11,7 @@ phases:
     commands:
       - echo Instaliu vsiaku dich...
       - apt-get update -y
-      - apt-get install git
+      - apt-get install git -y
       # - apt-get install -y maven
     finally:
       - you have finished install stage, if you are lucky 

@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: 2010-09-09 
+Description: >
+  task for training
+Parameters:
+  AccountType:
+    Description: The type of the account.
+    Type: String
+    Default: dev 
+    AllowedValues:
+      - dev
+      - qa
+      - stage
+      - prod
+  ProjectName:
+    Type: String
+    Description: knovio-infrastructure project name
+    Default: chornyi-plasch2
+  
+Resources:
+  KnovioInfrastructureTestCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${ProjectName}-${AccountType}-test-project-${AWS::Region}
+      Description: !Sub "${ProjectName} test CodeBuild project for CodePipeline (${AccountType}/${AWS::Region})"
+      BadgeEnabled: false
+      QueuedTimeoutInMinutes: 10
+      TimeoutInMinutes: 15
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AccountType
+            Type: PLAINTEXT
+            Value: !Ref AccountType
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yaml
+      ServiceRole: !Ref CodePipelineCloudFormationActionRole
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Ref KnovioInfrastructureCodeBuildLogGroup
+          Status: ENABLED
+      Tags:
+        - Key: env
+          Value: !Ref AccountType
+  KnovioInfrastructureTemplatesDeployCodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${ProjectName}-${AccountType}-templates-deploy-project-${AWS::Region}
+      Description: !Sub "${ProjectName} templates deploy CodeBuild project for CodePipeline (${AccountType}/${AWS::Region})"
+      BadgeEnabled: false
+      QueuedTimeoutInMinutes: 10
+      TimeoutInMinutes: 45
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:3.0
+        EnvironmentVariables:
+          - Name: AccountType
+            Type: PLAINTEXT
+            Value: !Ref AccountType
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yaml
+      ServiceRole: !Ref CodePipelineCloudFormationActionRole
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Ref KnovioInfrastructureCodeBuildLogGroup
+          Status: ENABLED
+  # S3 buckets
+  KnovioInfrastructureCodePipelineBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub ${ProjectName}-cicd-${AccountType}-${AWS::Region}-${AWS::AccountId}
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: Remove incomplete multipart uploads
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 2
+            Status: Enabled
+          - Id: Remove old packages
+            ExpirationInDays: 5
+            Status: Enabled
+            Prefix: !Sub codepipeline/${ProjectName}
+          - Id: !Sub Remove old ${ProjectName} deploy packages
+            ExpirationInDays: 5
+            Status: Enabled
+            Prefix: !Sub codebuild/${ProjectName}/
+          - Id: Remove old versions
+            NoncurrentVersionExpirationInDays: 5
+            Status: Enabled
+      Tags:
+        - Key: env
+          Value: !Ref AccountType
+  # CloudWatch Log Group
+  KnovioInfrastructureCodeBuildLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RetentionInDays: 7
+      LogGroupName: abrakadabra
+
+  CodePipelineCloudFormationActionRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      ManagedPolicyArns:
+        - !Ref CodeBuildPolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+          - Effect: Allow
+            Principal:
+              Service:
+              - codepipeline.amazonaws.com
+              - codebuild.amazonaws.com
+            Action: sts:AssumeRole
+
+      Tags:
+        - Key: env
+          Value: !Ref AccountType
+
+  ## MANAGED POLICIES ##
+  CodeBuildPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: myPolicy
+      Description: !Sub "Authorization to ${ProjectName}'s CodeBuild projects"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: "*"
+            Resource: "*"
+
+
+  
+  KnovioInfrastructureDeployCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: chornyi-plasch2
+      ArtifactStore:
+        Type: S3
+        Location: !Ref KnovioInfrastructureCodePipelineBucket 
+      RestartExecutionOnUpdate: true
+      RoleArn: !GetAtt CodePipelineCloudFormationActionRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              InputArtifacts: [ ]
+              Namespace: "SourceVariables"
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: "1"
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                Owner: "dashkun1215" 
+                Branch: main
+                Repo: smth
+                OAuthToken: "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" 
+                PollForSourceChanges: false
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Validation
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              InputArtifacts:
+                - Name: SourceArtifact
+              OutputArtifacts:
+                - Name: BuildArtifact
+              Configuration:
+                ProjectName: !Ref KnovioInfrastructureTestCodeBuildProject
+              RunOrder: 1
+
+        - Name: Deploy
+          Actions:
+            - Name: Deploy 
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: S3
+                Version: "1"
+              InputArtifacts:
+                - Name: BuildArtifact
+              Configuration:
+                BucketName: trainee-dashkun2
+                Extract: 'false'
+                ObjectKey: index
+      Tags:
+        - Key: env
+          Value: !Ref AccountType

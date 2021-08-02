@@ -154,11 +154,101 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Effect: Allow
-            Action: "*"
+          - Sid: "CodePipelineEnvBucketsAccess"
+            Action:
+              - s3:*
+            Effect: Allow
+            Action:
+              - s3:PutObject*
+              - s3:PutLifecycleConfiguration
+              - s3:ListBucket
+            Effect: Allow
+            Resource:
+              - !Join [ '/', [ !GetAtt KnovioInfrastructureCodePipelineBucket.Arn, '*' ] ]
+              - Fn::Sub:
+                  - "${DevOpsBucketArn}/*"
+                  - DevOpsBucketArn:
+                      Fn::ImportValue:
+                        !Sub ${AccountType}:knovio:s3:devops:bucket:arn
+              - Fn::ImportValue: !Sub ${AccountType}:knovio:s3:devops:bucket:arn
+          - Action:
+              - logs:*
+            Effect: Allow
+            Resource:
+              - !GetAtt KnovioInfrastructureCodeBuildLogGroup.Arn
+          - Action:
+              - logs:DescribeLogGroups
+            Effect: Allow
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+          - Action:
+            - iam:PassRole
             Resource: "*"
-
-
+            Effect: Allow
+            Condition:
+              StringEqualsIfExists:
+                iam:PassedToService:
+                - cloudformation.amazonaws.com
+                - elasticbeanstalk.amazonaws.com
+                - ec2.amazonaws.com
+                - ecs-tasks.amazonaws.com
+          - Action:
+            - codecommit:GetBranch
+            - codecommit:GetCommit
+            - codecommit:GetRepository
+            - codecommit:GetUploadArchiveStatus
+            Resource: "*"
+            Effect: Allow
+          - Action:
+            - elasticbeanstalk:*
+            - ec2:*
+            - cloudwatch:*
+            - s3:*
+            - cloudformation:*
+            Resource: "*"
+            Effect: Allow
+          - Action:
+            - opsworks:CreateDeployment
+            - opsworks:DescribeApps
+            - opsworks:DescribeCommands
+            - opsworks:DescribeDeployments
+            - opsworks:DescribeInstances
+            - opsworks:DescribeStacks
+            - opsworks:UpdateApp
+            - opsworks:UpdateStack
+            Resource: "*"
+            Effect: Allow
+          - Action:
+            - cloudformation:CreateStack
+            - cloudformation:DeleteStack
+            - cloudformation:DescribeStacks
+            - cloudformation:UpdateStack
+            - cloudformation:CreateChangeSet
+            - cloudformation:DeleteChangeSet
+            - cloudformation:DescribeChangeSet
+            - cloudformation:ExecuteChangeSet
+            - cloudformation:SetStackPolicy
+            - cloudformation:ValidateTemplate
+            Resource: "*"
+            Effect: Allow
+          - Effect: Allow
+            Action:
+            - servicecatalog:ListProvisioningArtifacts
+            - servicecatalog:CreateProvisioningArtifact
+            - servicecatalog:DescribeProvisioningArtifact
+            - servicecatalog:DeleteProvisioningArtifact
+            - servicecatalog:UpdateProduct
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - cloudformation:ValidateTemplate
+            Resource: "*"
+          - Effect: Allow
+            Action:
+            - appconfig:StartDeployment
+            - appconfig:StopDeployment
+            - appconfig:GetDeployment
+            Resource: "*" 
   
   KnovioInfrastructureDeployCodePipeline:
     Type: AWS::CodePipeline::Pipeline

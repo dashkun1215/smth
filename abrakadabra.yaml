@@ -14,13 +14,16 @@ Parameters:
   ProjectName:
     Type: String
     Description: knovio-infrastructure project name
-    Default: chornyi-plasch2
+    Default: chornyi-plasch3
+  GitHubTocken:
+    Type: String
+
   
 Resources:
   KnovioInfrastructureTestCodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub ${ProjectName}-${AccountType}-test-project-${AWS::Region}
+      Name: !Sub Daryna-${ProjectName}-${AccountType}-test-project-${AWS::Region}
       Description: !Sub "${ProjectName} test CodeBuild project for CodePipeline (${AccountType}/${AWS::Region})"
       BadgeEnabled: false
       QueuedTimeoutInMinutes: 10
@@ -39,7 +42,7 @@ Resources:
       Source:
         Type: CODEPIPELINE
         BuildSpec: buildspec.yaml
-      ServiceRole: !Ref CodePipelineCloudFormationActionRole
+      ServiceRole: !Ref ManagmentRole
       LogsConfig:
         CloudWatchLogs:
           GroupName: !Ref KnovioInfrastructureCodeBuildLogGroup
@@ -50,7 +53,7 @@ Resources:
   KnovioInfrastructureTemplatesDeployCodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub ${ProjectName}-${AccountType}-templates-deploy-project-${AWS::Region}
+      Name: !Sub Daryna-${ProjectName}-${AccountType}-templates-deploy-project-${AWS::Region}
       Description: !Sub "${ProjectName} templates deploy CodeBuild project for CodePipeline (${AccountType}/${AWS::Region})"
       BadgeEnabled: false
       QueuedTimeoutInMinutes: 10
@@ -68,11 +71,12 @@ Resources:
       Source:
         Type: CODEPIPELINE
         BuildSpec: buildspec.yaml
-      ServiceRole: !Ref CodePipelineCloudFormationActionRole
+      ServiceRole: !Ref ManagmentRole
       LogsConfig:
         CloudWatchLogs:
           GroupName: !Ref KnovioInfrastructureCodeBuildLogGroup
           Status: ENABLED
+
   # S3 buckets
   KnovioInfrastructureCodePipelineBucket:
     Type: AWS::S3::Bucket
@@ -119,13 +123,17 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       RetentionInDays: 7
-      LogGroupName: abrakadabra
-
-  CodePipelineCloudFormationActionRole:
+      LogGroupName: abrakadabra2
+#Roles
+  ManagmentRole:
     Type: AWS::IAM::Role
     DeletionPolicy: Delete
     Properties:
       ManagedPolicyArns:
+        - !Ref KnovioInfrastructureEcrPolicy
+        - !Ref KnovioInfrastructureCloudFormationPolicy
+        - !Ref KnovioInfrastructureCodePipelineBucketPolicy
+        - !Ref LogsPolicy
         - !Ref CodeBuildPolicy
       AssumeRolePolicyDocument:
         Version: 2012-10-17
@@ -145,79 +153,73 @@ Resources:
         - Key: env
           Value: !Ref AccountType
 
-  ## MANAGED POLICIES ##
-  CodeBuildPolicy:
+  BuildRole:
+    Type: AWS::IAM::Role
+    DeletionPolicy: Delete
+    Properties:
+      ManagedPolicyArns:
+        - !Ref CodeBuildPolicy
+        - !Ref KnovioInfrastructureCodePipelineBucketPolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+          - Effect: Allow
+            Principal:
+              Service:
+              - codepipeline.amazonaws.com
+              - codebuild.amazonaws.com
+            Action: sts:AssumeRole
+
+      Tags:
+        - Key: env
+          Value: !Ref AccountType
+
+
+#Policies start
+  LogsPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      ManagedPolicyName: myPolicy
-      Description: !Sub "Authorization to ${ProjectName}'s CodeBuild projects"
+      ManagedPolicyName: logPolicy
       PolicyDocument:
-        Version: '2012-10-17'
+        Version: 2012-10-17
         Statement:
-          - Sid: "CodePipelineEnvBucketsAccess"
-            Action:
-              - s3:*
-            Effect: Allow
-            Action:
-              - s3:PutObject*
-              - s3:PutLifecycleConfiguration
-              - s3:ListBucket
-            Effect: Allow
-            Resource:
-              - !Join [ '/', [ !GetAtt KnovioInfrastructureCodePipelineBucket.Arn, '*' ] ]
-              - Fn::Sub:
-                  - "${DevOpsBucketArn}/*"
-                  - DevOpsBucketArn:
-                      Fn::ImportValue:
-                        !Sub ${AccountType}:knovio:s3:devops:bucket:arn
-              - Fn::ImportValue: !Sub ${AccountType}:knovio:s3:devops:bucket:arn
           - Action:
-              - logs:*
+              - logs:Create*
+              - logs:Put*
+              - logs:Describe*
             Effect: Allow
-            Resource:
-              - !GetAtt KnovioInfrastructureCodeBuildLogGroup.Arn
-          - Action:
-              - logs:DescribeLogGroups
-            Effect: Allow
-            Resource:
+            Resource: 
               - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+
+  KnovioInfrastructureEcrPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: ecr-pol
+      Description: !Sub "${ProjectName} CodeBuild access to ECR (${AccountType}/${AWS::Region})"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
           - Action:
-            - iam:PassRole
-            Resource: "*"
+              - ecr:Create*
+              - ecr:DescribeRepositories
+              - ecr:*LifecyclePolicy
             Effect: Allow
-            Condition:
-              StringEqualsIfExists:
-                iam:PassedToService:
-                - cloudformation.amazonaws.com
-                - elasticbeanstalk.amazonaws.com
-                - ec2.amazonaws.com
-                - ecs-tasks.amazonaws.com
-          - Action:
-            - codecommit:GetBranch
-            - codecommit:GetCommit
-            - codecommit:GetRepository
-            - codecommit:GetUploadArchiveStatus
-            Resource: "*"
-            Effect: Allow
-          - Action:
-            - elasticbeanstalk:*
-            - ec2:*
-            - cloudwatch:*
-            - s3:*
-            - cloudformation:*
-            Resource: "*"
-            Effect: Allow
-          - Action:
-            - opsworks:CreateDeployment
-            - opsworks:DescribeApps
-            - opsworks:DescribeCommands
-            - opsworks:DescribeDeployments
-            - opsworks:DescribeInstances
-            - opsworks:DescribeStacks
-            - opsworks:UpdateApp
-            - opsworks:UpdateStack
-            Resource: "*"
-            Effect: Allow
+            Resource:
+              - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/*-${AccountType}
+              - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${AccountType}-* 
+
+  KnovioInfrastructureCloudFormationPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: CF-pol
+      Description: !Sub "Common access to CloudFormation (${AccountType}/${AWS::Region})"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
           - Action:
             - cloudformation:CreateStack
             - cloudformation:DeleteStack
@@ -229,36 +231,70 @@ Resources:
             - cloudformation:ExecuteChangeSet
             - cloudformation:SetStackPolicy
             - cloudformation:ValidateTemplate
-            Resource: "*"
             Effect: Allow
-          - Effect: Allow
-            Action:
-            - servicecatalog:ListProvisioningArtifacts
-            - servicecatalog:CreateProvisioningArtifact
-            - servicecatalog:DescribeProvisioningArtifact
-            - servicecatalog:DeleteProvisioningArtifact
-            - servicecatalog:UpdateProduct
-            Resource: "*"
-          - Effect: Allow
-            Action:
-            - cloudformation:ValidateTemplate
-            Resource: "*"
-          - Effect: Allow
-            Action:
-            - appconfig:StartDeployment
-            - appconfig:StopDeployment
-            - appconfig:GetDeployment
-            Resource: "*" 
-  
+            Resource:
+              - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*
+              - !Sub arn:aws:cloudformation:${AWS::Region}:aws:transform/CodeDeployBlueGreen
+
+
+  KnovioInfrastructureCodePipelineBucketPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: For_bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - s3:Get*
+              - s3:Put*
+              - s3:ListBucket
+            Effect: Allow
+            Resource: 
+              - 'arn:aws:s3:::trainee-dashkun3'
+              - 'arn:aws:s3:::trainee-dashkun3/*'
+              - !GetAtt KnovioInfrastructureCodePipelineBucket.Arn
+              - !Sub 
+                - ${KnovioInfrastructureCodePipelineBucketArn}/*
+                - KnovioInfrastructureCodePipelineBucketArn: !GetAtt KnovioInfrastructureCodePipelineBucket.Arn
+
+
+  CodeBuildPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: my1Policy
+      Description: !Sub "Authorization to ${ProjectName}'s CodeBuild projects"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+            - codebuild:BatchGetBuilds
+            - codebuild:StartBuild
+            - codebuild:BatchGetBuildBatches
+            - codebuild:StartBuildBatch
+            - codepipeline:*
+            - codedeploy:CreateDeployment
+            - codedeploy:GetApplication
+            - codedeploy:GetApplicationRevision
+            - codedeploy:GetDeployment
+            - codedeploy:GetDeploymentConfig
+            - codedeploy:RegisterApplicationRevision
+            - codestar-connections:UseConnection
+            Resource: 
+              - !Sub "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/Daryna*"
+            Effect: Allow
+
+
+#Policies end
+
   KnovioInfrastructureDeployCodePipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
-      Name: chornyi-plasch2
+      Name: chornyi-plasch3
+      RoleArn: !GetAtt BuildRole.Arn
       ArtifactStore:
         Type: S3
         Location: !Ref KnovioInfrastructureCodePipelineBucket 
       RestartExecutionOnUpdate: true
-      RoleArn: !GetAtt CodePipelineCloudFormationActionRole.Arn
       Stages:
         - Name: Source
           Actions:
@@ -276,7 +312,7 @@ Resources:
                 Owner: "dashkun1215" 
                 Branch: main
                 Repo: smth
-                OAuthToken: "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" 
+                OAuthToken: !Ref "GitHubTocken" 
                 PollForSourceChanges: false
               RunOrder: 1
         - Name: Build
@@ -294,7 +330,6 @@ Resources:
               Configuration:
                 ProjectName: !Ref KnovioInfrastructureTestCodeBuildProject
               RunOrder: 1
-
         - Name: Deploy
           Actions:
             - Name: Deploy 
@@ -306,7 +341,7 @@ Resources:
               InputArtifacts:
                 - Name: BuildArtifact
               Configuration:
-                BucketName: trainee-dashkun2
+                BucketName: trainee-dashkun3
                 Extract: 'false'
                 ObjectKey: index
       Tags:

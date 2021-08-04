@@ -266,6 +266,7 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
+
           - Action:
             - codebuild:BatchGetBuilds
             - codebuild:StartBuild
@@ -282,8 +283,6 @@ Resources:
             Resource: 
               - !Sub "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/Daryna*"
             Effect: Allow
-
-
 #Policies end
 
   KnovioInfrastructureDeployCodePipeline:
